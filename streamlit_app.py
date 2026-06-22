@@ -25,13 +25,14 @@ category_pref = st.sidebar.radio(
 )
 
 # Fetch Gemini API Key safely from Streamlit Cloud Secrets dashboard configuration
+# The new google-genai library accepts api_key passed directly into the Client constructor
 raw_key = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
 
 if not raw_key:
     st.error("⚠️ Gemini API Key not found! Please set GEMINI_API_KEY in Streamlit Secrets.")
     st.stop()
 
-# CRITICAL FIX: Strip any accidentally included quotes or spaces from the Streamlit Secrets text box
+# Strip any accidentally included quotes or spaces from the Streamlit Secrets text box
 clean_api_key = str(raw_key).replace('"', '').replace("'", "").strip()
 
 # Initialize the Gemini Client passing the explicit API key
@@ -97,30 +98,3 @@ if user_query := st.chat_input("What should we do this Saturday?"):
                 
             except Exception as e:
                 st.error(f"Could not reach backend or Gemini service. Error: {e}")
-```
-eof
-
----
-
-### Step 2: Validate the API Key Value in Streamlit Secrets
-
-Let's make sure the secret value is in the exact format Streamlit expects.
-
-1. Go to your **Streamlit App Dashboard** on [share.streamlit.io](https://share.streamlit.io).
-2. Click the **three dots** next to your app and select **Settings** -> **Secrets**.
-3. Clear your current secrets completely, and write it **exactly** like this (replacing with your key):
-
-```toml
-GEMINI_API_KEY = "AIzaSy..."
-```
-*(Make sure to copy the key directly from [Google AI Studio](https://aistudio.google.com/). Ensure there are no leading or trailing spaces!)*
-
-### Step 3: Verify the Key is Active
-
-If you've done the above and the error *still* displays, let's verify if your key is working at all. Open your computer's terminal and run this command:
-
-```bash
-curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=YOUR_API_KEY" \
--H 'Content-Type: application/json' \
--X POST \
--d '{"contents": [{"parts": [{"text": "Hello"}]}]}'
