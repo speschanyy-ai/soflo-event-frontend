@@ -25,7 +25,14 @@ category_pref = st.sidebar.radio(
 )
 
 # Fetch Gemini API Key safely from Streamlit Cloud Secrets dashboard configuration
+# The new google-genai library accepts api_key passed directly into the Client constructor
 api_key = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
+
+if not api_key:
+    st.error("⚠️ Gemini API Key not found! Please set GEMINI_API_KEY in Streamlit Secrets.")
+    st.stop()
+
+# Initialize the Gemini Client passing the explicit API key
 client = genai.Client(api_key=api_key)
 
 # Initialize persistent message logs for conversational consistency
@@ -52,26 +59,35 @@ if user_query := st.chat_input("What should we do this Saturday?"):
             payload = {"base_city": base_city, "max_drive_time": max_drive, "category_preference": pref}
             
             try:
+                # 1. Fetch filtered regional events from Render API
                 api_response = requests.get(backend_url, params=payload).json()
                 
-                # Contextual prompt engineering instructing Gemini to display clickable markdown URLs
-                prompt = f"""
-                The user is asking: '{user_query}'. 
-                Here is the real-time filtered JSON event data matching their current mobile parameters: {str(api_response)}. 
+                # Check if backend successfully found matching events
+                events_list = api_response.get("recommendations", [])
                 
-                Present the matching options clearly. For every single event returned, you MUST include a clean markdown hyperlink using the exact 'source_url' provided so it is clickable on a phone screen.
-                Example format: **[Click Here to View Event Source Site](url)**
-                """
-                
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction="You are a mobile event layout generator. Keep descriptions concise for phone viewing and maximize bold headings and bullet points. Always ensure URLs are wrapped inside standard clickable markdown link formatting."
+                if not events_list:
+                    response_text = "No events matched your exact drive time and category limits. Try increasing your driving range in the sidebar!"
+                else:
+                    # 2. Contextual prompt engineering instructing Gemini to display clickable markdown URLs
+                    prompt = f"""
+                    The user is asking: '{user_query}'. 
+                    Here is the real-time filtered JSON event data matching their current mobile parameters: {str(api_response)}. 
+                    
+                    Present the matching options clearly. For every single event returned, you MUST include a clean markdown hyperlink using the exact 'source_url' provided so it is clickable on a phone screen.
+                    Example format: **[Click Here to View Event Source Site](url)**
+                    """
+                    
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction="You are a mobile event layout generator. Keep descriptions concise for phone viewing and maximize bold headings and bullet points. Always ensure URLs are wrapped inside standard clickable markdown link formatting."
+                        )
                     )
-                )
+                    response_text = response.text
                 
-                st.markdown(response.text)
-                st.session_state.messages.append({"role": "assistant", "content": response.text})
+                st.markdown(response_text)
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
+                
             except Exception as e:
-                st.error(f"Could not reach Render backend server module. Error: {e}")
+                st.error(f"Could not reach backend or Gemini service. Error: {e}")
